@@ -1,26 +1,84 @@
 import math
 import json
 from pyproj import Transformer, transformer
-#vyresit mnozstvi kontejneru
 
-
+def geojson(dict_adresy, dict_kontejnery, souradnice_adr):
+    data ={}
+    adresni_mista = {}
+    souradnice = {}
+    data["adresni mista"] = adresni_mista,souradnice
+    adresni_mista["features"] =[]
+    souradnice["geometry"] =[]
+    for item,item2 in zip(dict_adresy.items(),dict_kontejnery.items()):
+        adresni_mista["features"].append({"adresa": item[0],"vzdalenost":item[1],"id":item2[0]})
+        souradnice["geometry"].append({"x":souradnice_adr[item[0]][0],"y":souradnice_adr[item[0]][1]})
+    with open('adresy_kontejnery.geojson', 'w', encoding="UTF-8") as outfile:
+        json.dump(data, outfile)
 
 #vypocet vzdalenosti
-def Vzdalenost (souradnice1, souradnice2):
-    x = abs(souradnice1[0]-souradnice2[0])
-    y = abs(souradnice1[1]-souradnice2[1])
-    vzdalenost = math.sqrt((x**2)+(y**2))
-    return vzdalenost
-    
+def Vzdalenost (souradnice_adr, souradnice_kon, typ_kontejneru):
+    min_vzdalenosti_adr ={}
+    min_vzdalenosti_kon = {}
+    vzdalenosti = {}
+    vzdalenosti_kon ={}
+    for items in souradnice_adr.items():
+        vzdalenost_default = 10000
+        #vypocet vzdalenosti mezi adresnim mistem a vsemi kontejnery
+        adresa = items[0]
+        souradnice1 = items[1]
+        for items2,items3 in zip(souradnice_kon.items(),typ_kontejneru.items()):
+            adr_kon = items2[0].split(" ")
+            kon_ulice = adr_kon[0]
+            kon_cp = adr_kon[1].split("/")
+            try:
+                adr_kon_uprava = kon_ulice,kon_cp[1]
+            except IndexError:
+                adr_kon_uprava = kon_ulice
+            kon_adresa = " ".join(adr_kon_uprava)
+            souradnice2 = items2[1]
+            id_kon = items3[0]
+            typ_kon = items3[1]
+            if typ_kon == "obyvatelům domu":
+                if kon_adresa == adresa:
+                    #adresa:vzdalenost = 0
+                    vzdalenosti[adresa] = 0
+                    #id:vzdalenost = 0
+                    vzdalenosti_kon[id_kon] = 0
+                else:
+                    continue
+            else:
+                x = abs(souradnice1[0]-souradnice2[0])
+                y = abs(souradnice1[1]-souradnice2[1])
+                vzdalenost = math.sqrt((x**2)+(y**2))
+                if vzdalenost <= vzdalenost_default:
+                    vzdalenost_default = vzdalenost
+                    #adresa:vzdalenost
+                    min_vzdalenosti_adr[adresa] = vzdalenost
+                    #id:vzdalenost
+                    vzdalenosti_kon[id_kon] = vzdalenost
+            
+            min_vzdalenosti_kon = list(vzdalenosti_kon.items())[-1]
 
-souradnice_adr = []
-ulice = []
-souradnice_kon = []
-typ = []
-sum_vzdalenost = 0
-min_vzdalenosti = []
-max_vzdalenosti = []
-vzdalenosti = []
+        #vzdalenosti k jednotlivym kontejnerum z adresy setridene podle velikosti
+        #vzdalenosti_adr_sort = dict(sorted(vzdalenosti.items(),key=lambda x: x[1]))
+        #vzdalenosti od jednotlivych kontejneru(id) k adresam setridene podle velikosti
+        #vzdalenosti_kon_sort = dict(sorted(vzdalenosti_kon.items(),key=lambda x: x[1]))
+        #adresa:nejkratsi vzdalenost
+        #min_vzdalenosti_adr[adresa] = list(vzdalenosti_adr_sort.values())[0]
+        #id:nejkratsi vzdalenost
+        #min_vzdalenosti_kon[adresa] = list(vzdalenosti_kon_sort.values())[0]
+
+    #nejkratsi vzdalenosti serazene podle velikosti
+    min_vzdalenosti_sort = dict(sorted(min_vzdalenosti_adr.items(),key=lambda x: x[1]))
+
+    geojson(min_vzdalenosti_adr,min_vzdalenosti_kon, souradnice_adr)
+
+    return min_vzdalenosti_sort
+        
+
+souradnice_kon = {}
+typ_kontejneru = {}
+souradnice_adr = {}
 
 #prevodnik
 wgs2jtsk = Transformer.from_crs(4326, 5514, always_xy=True)
@@ -33,53 +91,40 @@ with open("adresy.geojson", encoding="UTF-8") as file:
 with open("kontejnery.geojson", encoding="UTF-8") as file2:
     data_kontejnery = json.load(file2)
 
-#ziskani souradnic a typu pristupu kontejneru do listu 
+#ziskani souradnic a typu pristupu kontejneru slovniku 
 for feature in data_kontejnery["features"]:
-    souradnice_kon.append(feature["geometry"]["coordinates"])
-    typ.append(feature["properties"]["PRISTUP"])
+    souradnice_kon[feature["properties"]["STATIONNAME"]] = feature["geometry"]["coordinates"]
+    typ_kontejneru[feature["properties"]["ID"]] = feature["properties"]["PRISTUP"]
 
-#ziskani souradnic, jmen ulic a popisných cisel do listu
+#ziskani souradnic, jmen ulic a popisných cisel do slovniku
 for feature in data_adresy["features"]:
     souradnice_wgs = feature["geometry"]["coordinates"]
     #prevod souradnic
     souradnice_jtsk = wgs2jtsk.transform(*souradnice_wgs)
-    souradnice_adr.append(souradnice_jtsk)
-    
-    ulice.append(feature["properties"]["addr:street"])
-    #nektrefe adresy nemaji cislo popisne
-    #cislo_popisne = feature["properties"]["addr:streetnumber"]
+    try:
+        ulice = feature["properties"]["addr:street"]
+        ulicni_cislo = feature["properties"]["addr:streetnumber"]
+        adr = ulice + " " + ulicni_cislo
+        souradnice_adr[adr] = souradnice_jtsk
+    except KeyError:
+        souradnice_adr[adr] = souradnice_jtsk
 
-#vypocet vzdalenosti pro kazde adresni misto
-for item in souradnice_adr:
-    #vypocet vzdalenosti mezi adresnim mistem a vsemi kontejnery
-    for item2 in souradnice_kon:
-        vzdalenost = Vzdalenost(item,item2)
-        if vzdalenost <= 10000:
-            vzdalenosti.append(vzdalenost)
-    #ziskani nejkratsi vzdalenosti
-    vzdalenosti.sort()
-    min_vzdalenost = vzdalenosti[0]
-    if min_vzdalenost > 10000:
-        quit()
-    min_vzdalenosti.append(min_vzdalenost)
-    vzdalenosti.clear()
-
-    sum_vzdalenost += min_vzdalenost
-
-#vypocet prumerne vzdalenosti
-prumer = sum_vzdalenost/len(souradnice_adr)
-#ziskani maximalni vzdalenosti z listu minimalnich vzdalenosti
-min_vzdalenosti.sort()
-max_vzdalenost = min_vzdalenosti[-1]
+#vypocet min vzdalenosti od kontejneru pro kazde adresni misto
+min_vzdalenosti = Vzdalenost(souradnice_adr, souradnice_kon, typ_kontejneru)
+prumer = sum(min_vzdalenosti.values())/len(min_vzdalenosti)
+max_vzdalenost = list(min_vzdalenosti.items())[-1]
 #median
 pocet_prvku = len(min_vzdalenosti)
 if pocet_prvku%2 == 0:
-    median =  (min_vzdalenosti[pocet_prvku/2] + min_vzdalenosti[(pocet_prvku/2)+1])/2
+    index = int(pocet_prvku/2)
+    median =  (list(min_vzdalenosti.values())[index] + list(min_vzdalenosti.values())[index+1])/2
 else:
-    median = min_vzdalenosti[(pocet_prvku//2)+1]
+    median = list(min_vzdalenosti.values())[(pocet_prvku//2)+1]
 
-print(max_vzdalenost)
-print(median)
-#print(souradnice_wgs)
-#print(souradnice_adr)
-#print(vzdalenosti)
+#VYSTUP
+#pocet adresnich mist a kontejneru
+print(f"Bylo načteno {len(souradnice_adr)} adresních míst.")
+print(f"Bylo načteno {len(souradnice_kon)} kontejnerů.")
+print(f"Průměrná vzdálenost ke kontejneru je {prumer} metrů.")
+print(f"Medián vzdálenosti je {median} metrů.")
+print(f"Nejdále mají ke kontejneru na adrese {max_vzdalenost[0]} a to {round(max_vzdalenost[1],0)} metrů.")
