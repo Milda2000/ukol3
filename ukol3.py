@@ -2,18 +2,19 @@ import math
 import json
 from pyproj import Transformer, transformer
 
-def geojson(dict_adresy, dict_kontejnery, souradnice_adr):
-    data ={}
-    adresni_mista = {}
-    souradnice = {}
-    data["adresni mista"] = adresni_mista,souradnice
-    adresni_mista["features"] =[]
-    souradnice["geometry"] =[]
-    for item,item2 in zip(dict_adresy.items(),dict_kontejnery.items()):
-        adresni_mista["features"].append({"adresa": item[0],"vzdalenost":item[1],"id":item2[0]})
-        souradnice["geometry"].append({"x":souradnice_adr[item[0]][0],"y":souradnice_adr[item[0]][1]})
+def geojson(adresy_vzdalenosti, kontejnery_vzdalenosti, adresy_geojson):
+    #data ={}
+    #adresni_mista = {}
+    #souradnice = {}
+    #data["adresni mista"] = adresni_mista,souradnice
+    #adresni_mista["features"] =[]
+    #souradnice["geometry"] =[]
+    for item,item2 in zip(adresy_vzdalenosti.items(),kontejnery_vzdalenosti.items()):
+        adresy_geojson["features"]["properties"]["id"] = item2[0]
+        #adresni_mista["features"].append({"adresa": item[0],"vzdalenost":item[1],"id":item2[0]})
+        #souradnice["geometry"].append({"x":souradnice_adr[item[0]][0],"y":souradnice_adr[item[0]][1]})
     with open('adresy_kontejnery.geojson', 'w', encoding="UTF-8") as outfile:
-        json.dump(data, outfile)
+        json.dump(adresy_geojson, outfile)
 
 #vypocet vzdalenosti
 def Vzdalenost (souradnice_adr, souradnice_kon, typ_kontejneru):
@@ -55,9 +56,7 @@ def Vzdalenost (souradnice_adr, souradnice_kon, typ_kontejneru):
                     #adresa:vzdalenost
                     min_vzdalenosti_adr[adresa] = vzdalenost
                     #id:vzdalenost
-                    vzdalenosti_kon[id_kon] = vzdalenost
-            
-            min_vzdalenosti_kon = list(vzdalenosti_kon.items())[-1]
+                    min_vzdalenosti_kon[id_kon] = min_vzdalenosti_adr[adresa]
 
         #vzdalenosti k jednotlivym kontejnerum z adresy setridene podle velikosti
         #vzdalenosti_adr_sort = dict(sorted(vzdalenosti.items(),key=lambda x: x[1]))
@@ -68,7 +67,7 @@ def Vzdalenost (souradnice_adr, souradnice_kon, typ_kontejneru):
         #id:nejkratsi vzdalenost
         #min_vzdalenosti_kon[adresa] = list(vzdalenosti_kon_sort.values())[0]
 
-    #nejkratsi vzdalenosti serazene podle velikosti
+    #nejkratsi vzdalenosti serazene podle velikosti, adresy
     min_vzdalenosti_sort = dict(sorted(min_vzdalenosti_adr.items(),key=lambda x: x[1]))
 
     geojson(min_vzdalenosti_adr,min_vzdalenosti_kon, souradnice_adr)
